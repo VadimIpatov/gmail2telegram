@@ -25,8 +25,98 @@ type Message struct {
 	Date    string
 }
 
+// GmailServiceInterface defines the interface for Gmail service operations
+type GmailServiceInterface interface {
+	Users() GmailUsersInterface
+}
+
+// GmailUsersInterface defines the interface for Gmail users operations
+type GmailUsersInterface interface {
+	Labels() GmailLabelsInterface
+	Messages() GmailMessagesInterface
+}
+
+// GmailLabelsInterface defines the interface for Gmail labels operations
+type GmailLabelsInterface interface {
+	List(userId string) ([]*gmail.Label, error)
+	Create(userId string, label *gmail.Label) (*gmail.Label, error)
+}
+
+// GmailMessagesInterface defines the interface for Gmail messages operations
+type GmailMessagesInterface interface {
+	List(userId string, q string) ([]*gmail.Message, error)
+	Get(userId string, id string) (*gmail.Message, error)
+	Modify(userId string, id string, mods *gmail.ModifyMessageRequest) (*gmail.Message, error)
+}
+
+// GmailServiceWrapper wraps the Gmail service for easier mocking in tests
+type GmailServiceWrapper struct {
+	service *gmail.Service
+}
+
+// NewGmailServiceWrapper creates a new wrapper around the Gmail service
+func NewGmailServiceWrapper(service *gmail.Service) *GmailServiceWrapper {
+	return &GmailServiceWrapper{service: service}
+}
+
+// GmailUsersWrapper wraps the Gmail users service
+type GmailUsersWrapper struct {
+	service *gmail.Service
+}
+
+// GmailLabelsWrapper wraps the Gmail labels service
+type GmailLabelsWrapper struct {
+	service *gmail.Service
+}
+
+// GmailMessagesWrapper wraps the Gmail messages service
+type GmailMessagesWrapper struct {
+	service *gmail.Service
+}
+
+func (w *GmailServiceWrapper) Users() GmailUsersInterface {
+	return &GmailUsersWrapper{service: w.service}
+}
+
+func (w *GmailUsersWrapper) Labels() GmailLabelsInterface {
+	return &GmailLabelsWrapper{service: w.service}
+}
+
+func (w *GmailUsersWrapper) Messages() GmailMessagesInterface {
+	return &GmailMessagesWrapper{service: w.service}
+}
+
+func (w *GmailLabelsWrapper) List(userId string) ([]*gmail.Label, error) {
+	resp, err := w.service.Users.Labels.List(userId).Do()
+	if err != nil {
+		return nil, err
+	}
+	return resp.Labels, nil
+}
+
+func (w *GmailLabelsWrapper) Create(userId string, label *gmail.Label) (*gmail.Label, error) {
+	return w.service.Users.Labels.Create(userId, label).Do()
+}
+
+func (w *GmailMessagesWrapper) List(userId string, q string) ([]*gmail.Message, error) {
+	resp, err := w.service.Users.Messages.List(userId).Q(q).Do()
+	if err != nil {
+		return nil, err
+	}
+	return resp.Messages, nil
+}
+
+func (w *GmailMessagesWrapper) Get(userId string, id string) (*gmail.Message, error) {
+	return w.service.Users.Messages.Get(userId, id).Do()
+}
+
+func (w *GmailMessagesWrapper) Modify(userId string, id string, mods *gmail.ModifyMessageRequest) (*gmail.Message, error) {
+	return w.service.Users.Messages.Modify(userId, id, mods).Do()
+}
+
+// GmailClient struct
 type GmailClient struct {
-	service         *gmail.Service
+	service         GmailServiceInterface
 	config          *Config
 	labelID         string
 	getNewMessages  func(ctx context.Context) ([]Message, error)
@@ -68,7 +158,7 @@ func NewGmailClient(ctx context.Context, config *Config) (*GmailClient, error) {
 	}
 
 	gc := &GmailClient{
-		service: srv,
+		service: NewGmailServiceWrapper(srv),
 		config:  config,
 	}
 
@@ -85,138 +175,98 @@ func NewGmailClient(ctx context.Context, config *Config) (*GmailClient, error) {
 	return gc, nil
 }
 
-func (c *GmailClient) ensureLabelExists(_ context.Context) (string, error) {
-	// Try to find existing label
-	labels, err := c.service.Users.Labels.List("me").Do()
+func (c *GmailClient) ensureLabelExists(ctx context.Context) (string, error) {
+	// List all labels
+	labels, err := c.service.Users().Labels().List("me")
 	if err != nil {
-		return "", fmt.Errorf("unable to list labels: %v", err)
+		return "", fmt.Errorf("failed to list labels: %v", err)
 	}
 
-	for _, label := range labels.Labels {
+	// Check if the label already exists
+	for _, label := range labels {
 		if label.Name == c.config.Gmail.ForwardedLabel {
 			return label.Id, nil
 		}
 	}
 
-	// Create new label if it doesn't exist
-	label := &gmail.Label{
+	// Create the label if it doesn't exist
+	newLabel := &gmail.Label{
 		Name: c.config.Gmail.ForwardedLabel,
 	}
-
-	created, err := c.service.Users.Labels.Create("me", label).Do()
+	createdLabel, err := c.service.Users().Labels().Create("me", newLabel)
 	if err != nil {
-		return "", fmt.Errorf("unable to create label: %v", err)
+		return "", fmt.Errorf("failed to create label: %v", err)
 	}
 
-	return created.Id, nil
+	return createdLabel.Id, nil
 }
 
 func (c *GmailClient) GetNewMessages(ctx context.Context) ([]Message, error) {
-	return c.getNewMessages(ctx)
-}
-
-func (c *GmailClient) defaultGetNewMessages(_ context.Context) ([]Message, error) {
-	query := fmt.Sprintf("is:unread -label:%s", c.config.Gmail.ForwardedLabel)
-
-	// Build OR condition for from addresses
-	if len(c.config.Gmail.Filter.From) > 0 {
-		fromConditions := make([]string, len(c.config.Gmail.Filter.From))
-		for i, from := range c.config.Gmail.Filter.From {
-			fromConditions[i] = fmt.Sprintf("from:%s", from)
-		}
-
-		query += " (" + strings.Join(fromConditions, " OR ") + ")"
-	}
-
-	log.Printf("Using Gmail query: %s", query)
-
-	messages, err := c.service.Users.Messages.List("me").Q(query).Do()
+	// Get messages that don't have the forwarded label
+	labelId, err := c.ensureLabelExists(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve messages: %v", err)
+		return nil, err
 	}
 
-	log.Printf("Gmail API returned %d messages", len(messages.Messages))
+	query := fmt.Sprintf("-label:%s", c.config.Gmail.ForwardedLabel)
+	messages, err := c.service.Users().Messages().List("me", query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list messages: %v", err)
+	}
 
 	var result []Message
-
-	for _, msg := range messages.Messages {
-		message, err := c.service.Users.Messages.Get("me", msg.Id).Do()
+	for _, msg := range messages {
+		// Get the full message details
+		fullMsg, err := c.service.Users().Messages().Get("me", msg.Id)
 		if err != nil {
-			log.Printf("Error getting message details for ID %s: %v", msg.Id, err)
+			return nil, fmt.Errorf("failed to get message %s: %v", msg.Id, err)
+		}
 
+		// Parse the message
+		parsedMsg, err := c.parseMessage(fullMsg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse message %s: %v", msg.Id, err)
+		}
+
+		if !c.shouldProcessMessage(parsedMsg) {
 			continue
 		}
 
-		// Log message details for debugging
-		var subject, from string
+		result = append(result, parsedMsg)
 
-		for _, header := range message.Payload.Headers {
-			switch header.Name {
-			case "Subject":
-				subject = header.Value
-			case "From":
-				from = header.Value
-			}
+		// Mark the message as processed by adding the label
+		modReq := &gmail.ModifyMessageRequest{
+			AddLabelIds: []string{labelId},
 		}
-
-		log.Printf("Found message - ID: %s, Subject: %s, From: %s", msg.Id, subject, from)
-
-		parsedMsg, err := c.parseMessage(message)
+		_, err = c.service.Users().Messages().Modify("me", msg.Id, modReq)
 		if err != nil {
-			log.Printf("Error parsing message %s: %v", msg.Id, err)
-
-			continue
-		}
-
-		if c.shouldProcessMessage(parsedMsg) {
-			log.Printf("Message %s matches processing criteria", msg.Id)
-
-			result = append(result, parsedMsg)
-		} else {
-			log.Printf("Message %s does not match processing criteria", msg.Id)
+			return nil, fmt.Errorf("failed to modify message %s: %v", msg.Id, err)
 		}
 	}
 
-	log.Printf("Returning %d messages that match all criteria", len(result))
-
 	return result, nil
+}
+
+func (c *GmailClient) defaultGetNewMessages(ctx context.Context) ([]Message, error) {
+	return c.GetNewMessages(ctx)
 }
 
 func (c *GmailClient) MarkAsForwarded(ctx context.Context, messageID string) error {
 	return c.markAsForwarded(ctx, messageID)
 }
 
-func (c *GmailClient) defaultMarkAsForwarded(_ context.Context, messageID string) error {
-	modify := &gmail.ModifyMessageRequest{
+func (c *GmailClient) defaultMarkAsForwarded(ctx context.Context, messageID string) error {
+	modReq := &gmail.ModifyMessageRequest{
 		AddLabelIds: []string{c.labelID},
 	}
-
-	_, err := c.service.Users.Messages.Modify("me", messageID, modify).Do()
-	if err != nil {
-		return fmt.Errorf("unable to mark message as forwarded: %v", err)
-	}
-
-	return nil
-}
-
-func (c *GmailClient) parseMessagePart(part *gmail.MessagePart) (string, error) {
-	if part.Body.Data == "" {
-		return "", nil
-	}
-
-	decoded, err := base64.URLEncoding.DecodeString(part.Body.Data)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode message part: %w", err)
-	}
-
-	return string(decoded), nil
+	_, err := c.service.Users().Messages().Modify("me", messageID, modReq)
+	return err
 }
 
 func (c *GmailClient) parseMessage(msg *gmail.Message) (Message, error) {
 	var result Message
 	result.ID = msg.Id
 
-	// Parse headers
 	for _, header := range msg.Payload.Headers {
 		switch header.Name {
 		case "Subject":
@@ -228,76 +278,89 @@ func (c *GmailClient) parseMessage(msg *gmail.Message) (Message, error) {
 		}
 	}
 
-	// Parse content
-	if msg.Payload.Parts == nil {
-		if msg.Payload.Body.Data == "" {
-			return Message{}, fmt.Errorf("no content found in message")
-		}
-
-		content, err := c.parseMessagePart(&gmail.MessagePart{Body: msg.Payload.Body})
-		if err != nil {
-			return Message{}, err
-		}
-
-		result.Content = content
-
-		return result, nil
+	// Get message content
+	content, err := c.getMessageContent(msg)
+	if err != nil {
+		return result, fmt.Errorf("failed to get message content: %v", err)
 	}
-
-	// Handle multipart message
-	for _, part := range msg.Payload.Parts {
-		if part.MimeType != "text/plain" && part.MimeType != "text/html" {
-			continue
-		}
-
-		content, err := c.parseMessagePart(part)
-		if err != nil {
-			return Message{}, err
-		}
-
-		if content != "" {
-			result.Content = content
-
-			break
-		}
-	}
-
-	if result.Content == "" {
-		return Message{}, fmt.Errorf("no content found in message")
-	}
+	result.Content = content
 
 	return result, nil
 }
 
+func (c *GmailClient) getMessageContent(msg *gmail.Message) (string, error) {
+	if msg == nil || msg.Payload == nil {
+		return "", fmt.Errorf("invalid message: payload is nil")
+	}
+
+	var content string
+
+	if msg.Payload.Body != nil && msg.Payload.Body.Data != "" {
+		data, err := base64.URLEncoding.DecodeString(msg.Payload.Body.Data)
+		if err != nil {
+			return "", err
+		}
+		content = string(data)
+	} else if len(msg.Payload.Parts) > 0 {
+		for _, part := range msg.Payload.Parts {
+			if part != nil && part.MimeType == "text/plain" && part.Body != nil && part.Body.Data != "" {
+				data, err := base64.URLEncoding.DecodeString(part.Body.Data)
+				if err != nil {
+					return "", err
+				}
+				content = string(data)
+				break
+			}
+		}
+	}
+
+	return content, nil
+}
+
 func (c *GmailClient) shouldProcessMessage(msg Message) bool {
-	// If no keywords are specified, consider all messages as matches
-	if len(c.config.Gmail.Filter.SubjectKeywords) == 0 && len(c.config.Gmail.Filter.ContentKeywords) == 0 {
-		log.Printf("No keywords specified, considering message as match")
-
-		return true
-	}
-
-	// Check subject keywords
-	for _, keyword := range c.config.Gmail.Filter.SubjectKeywords {
-		if strings.Contains(strings.ToLower(msg.Subject), strings.ToLower(keyword)) {
-			log.Printf("Message matches subject keyword: %s", keyword)
-
-			return true
+	// Check From filter
+	if len(c.config.Gmail.Filter.From) > 0 {
+		fromMatched := false
+		for _, from := range c.config.Gmail.Filter.From {
+			if strings.Contains(strings.ToLower(msg.From), strings.ToLower(from)) {
+				fromMatched = true
+				break
+			}
+		}
+		if !fromMatched {
+			return false
 		}
 	}
 
-	// Check content keywords
-	for _, keyword := range c.config.Gmail.Filter.ContentKeywords {
-		if strings.Contains(strings.ToLower(msg.Content), strings.ToLower(keyword)) {
-			log.Printf("Message matches content keyword: %s", keyword)
-
-			return true
+	// Check Subject keywords
+	if len(c.config.Gmail.Filter.SubjectKeywords) > 0 {
+		subjectMatched := false
+		for _, keyword := range c.config.Gmail.Filter.SubjectKeywords {
+			if strings.Contains(strings.ToLower(msg.Subject), strings.ToLower(keyword)) {
+				subjectMatched = true
+				break
+			}
+		}
+		if !subjectMatched {
+			return false
 		}
 	}
 
-	log.Printf("Message does not match any keywords")
+	// Check Content keywords
+	if len(c.config.Gmail.Filter.ContentKeywords) > 0 {
+		contentMatched := false
+		for _, keyword := range c.config.Gmail.Filter.ContentKeywords {
+			if strings.Contains(strings.ToLower(msg.Content), strings.ToLower(keyword)) {
+				contentMatched = true
+				break
+			}
+		}
+		if !contentMatched {
+			return false
+		}
+	}
 
-	return false
+	return true
 }
 
 func tokenFromFile(file string) (*oauth2.Token, error) {

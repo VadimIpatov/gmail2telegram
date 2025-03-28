@@ -7,6 +7,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"google.golang.org/api/gmail/v1"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -215,7 +217,13 @@ func TestStartMessageProcessing(_ *testing.T) {
 	messageReturned := false
 
 	// Create mock services
+	mockService := NewMockGmailService()
+	mockService.labels = []*gmail.Label{
+		{Id: "test-label", Name: "test-label"},
+	}
+
 	mockGmailClient := &GmailClient{
+		service: mockService,
 		labelID: "test-label",
 		config: &Config{
 			Gmail: struct {
@@ -260,17 +268,17 @@ func TestStartMessageProcessing(_ *testing.T) {
 	}
 
 	mockTelegramBot := &TelegramBot{
-		client:    &http.Client{Timeout: 5 * time.Second},
+		client:    server.Client(),
 		botToken:  "test-token",
 		channelID: "test-channel",
 		chatID:    "test-chat",
 		baseURL:   server.URL,
 	}
 
-	// Create context with longer timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	// Create a context with a short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	// Test starting message processing with shorter poll interval
-	startMessageProcessing(ctx, 100*time.Millisecond, mockGmailClient, mockTranslationService, mockTelegramBot)
+	// Start message processing with a short poll interval
+	startMessageProcessing(ctx, 50*time.Millisecond, mockGmailClient, mockTranslationService, mockTelegramBot)
 }

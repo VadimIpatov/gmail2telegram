@@ -5,3 +5,4 @@ gmail2telegram
 *.json
 config.yaml 
 .DS_Store
+coverage.txt
