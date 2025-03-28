@@ -1,0 +1,54 @@
+# Gmail to Telegram Forwarder Configuration Example
+# Copy this file to config.yaml and update the values
+
+gmail:
+  # OAuth2 credentials from Google Cloud Console
+  credentials_file: "credentials.json"
+  
+  # Will be generated automatically on first run
+  token_file: "token.json"
+  
+  # Duration in Go format (1m, 5m, etc.)
+  poll_interval: "1m"
+  
+  # Label to mark forwarded messages
+  forwarded_label: "ForwardedToTelegram"
+  
+  # Message filtering rules
+  filter:
+    # List of email addresses or domains to filter
+    from:
+      - "@example.com"      # Filter by domain
+      - "user@gmail.com"    # Filter by exact email
+    
+    # Keywords to match in email subject
+    subject_keywords:
+      - "important"
+      - "urgent"
+      - "notification"
+    
+    # Keywords to match in email content
+    content_keywords:
+      - "update"
+      - "alert"
+      - "notice"
+
+telegram:
+  # Your Telegram bot token from @BotFather
+  bot_token: "your_bot_token_here"
+  
+  # Your Telegram channel ID (with -100 prefix for public channels)
+  channel_id: "your_channel_id_here"
+  
+  # Your Telegram chat ID (same as channel_id for public channels)
+  chat_id: "your_chat_id_here"
+
+translation:
+  # Your Gemini API key from Google AI Studio
+  gemini_api_key: "your_gemini_api_key_here"
+  
+  # Target language for translation (e.g., "Russian", "English", "Latvian")
+  target_language: "Russian"
+  
+  # Gemini model to use for translation
+  model_name: "gemini-2.0-flash" 

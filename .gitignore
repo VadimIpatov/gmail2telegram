@@ -1,0 +1,7 @@
+gmail2telegram
+*.test
+.idea/
+.vscode/
+*.json
+config.yaml 
+.DS_Store
