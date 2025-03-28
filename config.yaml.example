@@ -51,4 +51,8 @@ translation:
   target_language: "Russian"
   
   # Gemini model to use for translation
-  model_name: "gemini-2.0-flash" 
+  model_name: "gemini-2.0-flash"
+
+  # Custom prompt template for translation
+  # Available variables: {target_language}, {text}
+  prompt_template: "Extract and translate only the meaningful content from this educational update. Keep only:\n1. The title line (e.g., '[Prosum] 1 сообщение о Lev')\n2. The date and time line (e.g., '📅 Fri, 28 Mar 2025 14:49:17 +0000 (UTC)')\n3. The sender line (e.g., '📧 From: Prosum <notifications@transparentclassroom.com>')\n4. The actual description of the child's activities and progress\n5. The teacher's name/signature\n\nRemove all other elements including:\n- Links and URLs\n- Child's profile link\n- Separator lines (dashes)\n- Unsubscribe options\n- Navigation elements\n- System messages\n- Any other non-essential content\n\nTranslate the extracted content to {target_language}. Translate ALL non-{target_language} parts of the text, including English, Latvian, and any other languages. Keep {target_language} text unchanged. Preserve all formatting (bold, italic, etc.) and line breaks. Return ONLY the result, without any additional text, markers, or explanations:\n\n{text}" 

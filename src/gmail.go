@@ -203,11 +203,6 @@ func (c *GmailClient) ensureLabelExists(ctx context.Context) (string, error) {
 
 func (c *GmailClient) GetNewMessages(ctx context.Context) ([]Message, error) {
 	// Get messages that don't have the forwarded label
-	labelId, err := c.ensureLabelExists(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	query := fmt.Sprintf("-label:%s", c.config.Gmail.ForwardedLabel)
 	messages, err := c.service.Users().Messages().List("me", query)
 	if err != nil {
@@ -233,15 +228,6 @@ func (c *GmailClient) GetNewMessages(ctx context.Context) ([]Message, error) {
 		}
 
 		result = append(result, parsedMsg)
-
-		// Mark the message as processed by adding the label
-		modReq := &gmail.ModifyMessageRequest{
-			AddLabelIds: []string{labelId},
-		}
-		_, err = c.service.Users().Messages().Modify("me", msg.Id, modReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to modify message %s: %v", msg.Id, err)
-		}
 	}
 
 	return result, nil

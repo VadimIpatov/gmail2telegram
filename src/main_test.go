@@ -31,6 +31,7 @@ translation:
   gemini_api_key: "test-key"
   target_language: "en"
   model_name: "test-model"
+  prompt_template: "Translate to {target_language}: {text}"
 `
 
 	tmpfile, err := os.CreateTemp("", "config-*.yaml")
@@ -99,8 +100,10 @@ func TestProcessMessage(t *testing.T) {
 				GeminiAPIKey   string `yaml:"gemini_api_key"`
 				TargetLanguage string `yaml:"target_language"`
 				ModelName      string `yaml:"model_name"`
+				PromptTemplate string `yaml:"prompt_template"`
 			}{
 				TargetLanguage: "en",
+				PromptTemplate: "Translate to {target_language}: {text}",
 			},
 		},
 		translate: func(ctx context.Context, text string) (string, error) {
@@ -164,8 +167,10 @@ func TestProcessMessages(_ *testing.T) {
 				GeminiAPIKey   string `yaml:"gemini_api_key"`
 				TargetLanguage string `yaml:"target_language"`
 				ModelName      string `yaml:"model_name"`
+				PromptTemplate string `yaml:"prompt_template"`
 			}{
 				TargetLanguage: "en",
+				PromptTemplate: "Translate to {target_language}: {text}",
 			},
 		},
 		translate: func(ctx context.Context, text string) (string, error) {
@@ -258,8 +263,10 @@ func TestStartMessageProcessing(_ *testing.T) {
 				GeminiAPIKey   string `yaml:"gemini_api_key"`
 				TargetLanguage string `yaml:"target_language"`
 				ModelName      string `yaml:"model_name"`
+				PromptTemplate string `yaml:"prompt_template"`
 			}{
 				TargetLanguage: "en",
+				PromptTemplate: "Translate to {target_language}: {text}",
 			},
 		},
 		translate: func(ctx context.Context, text string) (string, error) {

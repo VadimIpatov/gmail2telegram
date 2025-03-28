@@ -12,7 +12,6 @@ A Go application that forwards emails from Gmail to Telegram, with automatic tra
 - Filters messages based on sender, subject keywords, and content keywords
 - Translates content to a specified language
 - Forwards messages to Telegram channel or chat
-- Preserves message formatting
 - Configurable polling interval
 - Docker support
 

@@ -34,6 +34,7 @@ type Config struct {
 		GeminiAPIKey   string `yaml:"gemini_api_key"`
 		TargetLanguage string `yaml:"target_language"`
 		ModelName      string `yaml:"model_name"`
+		PromptTemplate string `yaml:"prompt_template"`
 	} `yaml:"translation"`
 }
 
@@ -120,8 +121,6 @@ func startMessageProcessing(
 	telegramBot *TelegramBot,
 ) {
 	// Process messages immediately on startup
-	log.Println("Performing initial message check...")
-
 	messages, err := gmailClient.GetNewMessages(ctx)
 	if err != nil {
 		log.Printf("Error getting new messages: %v", err)

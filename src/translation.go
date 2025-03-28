@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	defaultModelName = "gemini-2.0-flash"
+	defaultModelName      = "gemini-2.0-flash"
+	defaultPromptTemplate = "Translate this text to {target_language}. Translate ALL non-{target_language} parts of the text, including English, Latvian, and any other languages. Keep {target_language} text unchanged. Preserve all formatting (bold, italic, etc.) and line breaks. Return ONLY the result, without any additional text, markers, or explanations:\n\n{text}"
 )
 
 type TranslationService struct {
@@ -55,15 +56,17 @@ func (s *TranslationService) defaultTranslate(ctx context.Context, text string) 
 		modelName = defaultModelName
 	}
 
+	// Use the configured prompt template or fall back to default
+	promptTemplate := s.config.Translation.PromptTemplate
+	if promptTemplate == "" {
+		promptTemplate = defaultPromptTemplate
+	}
+
+	// Replace variables in the prompt template
+	prompt := strings.ReplaceAll(promptTemplate, "{target_language}", s.config.Translation.TargetLanguage)
+	prompt = strings.ReplaceAll(prompt, "{text}", text)
+
 	model := s.client.GenerativeModel(modelName)
-	prompt := fmt.Sprintf(`Translate this text to %s. Translate ALL non-%s parts of the text, 
-including English, Latvian, and any other languages. Keep %s text unchanged. 
-Preserve all formatting (bold, italic, etc.) and line breaks. Return ONLY the result, 
-without any additional text, markers, or explanations:
-
-%s`, s.config.Translation.TargetLanguage, s.config.Translation.TargetLanguage,
-		s.config.Translation.TargetLanguage, text)
-
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate content: %v", err)
