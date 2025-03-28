@@ -9,10 +9,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY src/ ./src/
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o gmail2telegram
+RUN CGO_ENABLED=0 GOOS=linux go build -o gmail2telegram ./src
 
 # Use a minimal alpine image for the final stage
 FROM alpine:latest
@@ -21,7 +21,6 @@ WORKDIR /app
 
 # Copy the binary from builder
 COPY --from=builder /app/gmail2telegram .
-COPY --from=builder /app/config.yaml .
 
 # Create a non-root user
 RUN adduser -D appuser
