@@ -25,8 +25,13 @@ clean:
 
 # Run linter
 lint:
-	go tool mvdan.cc/gofumpt -l -w ./src  
+	go tool mvdan.cc/gofumpt -l -w ./src
 	go tool github.com/golangci/golangci-lint/cmd/golangci-lint run
+
+# Fix lint issues automatically
+lint-fix:
+	go tool mvdan.cc/gofumpt -l -w ./src
+	go tool github.com/golangci/golangci-lint/cmd/golangci-lint run --fix
 
 # Install dependencies
 deps:
@@ -44,6 +49,7 @@ help:
 	@echo "  make test     - Run tests with coverage"
 	@echo "  make clean    - Clean build artifacts"
 	@echo "  make lint     - Run linter"
+	@echo "  make lint-fix - Run linter with auto-fix"
 	@echo "  make deps     - Install dependencies"
 	@echo "  make token    - Generate Gmail token"
 	@echo "  make help     - Show this help message" 
