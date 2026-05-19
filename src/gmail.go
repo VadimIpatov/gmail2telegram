@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -279,28 +280,122 @@ func (c *GmailClient) getMessageContent(msg *gmail.Message) (string, error) {
 		return "", fmt.Errorf("invalid message: payload is nil")
 	}
 
-	var content string
+	// Try to find plain text first (preferred), then fall back to HTML
+	plain, html, err := extractTextFromPart(msg.Payload)
+	if err != nil {
+		return "", err
+	}
 
-	if msg.Payload.Body != nil && msg.Payload.Body.Data != "" {
-		data, err := base64.URLEncoding.DecodeString(msg.Payload.Body.Data)
-		if err != nil {
-			return "", err
+	if plain != "" {
+		return plain, nil
+	}
+
+	if html != "" {
+		return stripHTML(html), nil
+	}
+
+	return "", nil
+}
+
+// extractTextFromPart recursively walks MIME parts to find text/plain and text/html content.
+func extractTextFromPart(part *gmail.MessagePart) (plain, html string, err error) {
+	if part == nil {
+		return "", "", nil
+	}
+
+	switch part.MimeType {
+	case "text/plain":
+		if part.Body != nil && part.Body.Data != "" {
+			data, decErr := base64.URLEncoding.DecodeString(part.Body.Data)
+			if decErr != nil {
+				return "", "", decErr
+			}
+			return string(data), "", nil
 		}
-		content = string(data)
-	} else if len(msg.Payload.Parts) > 0 {
-		for _, part := range msg.Payload.Parts {
-			if part != nil && part.MimeType == "text/plain" && part.Body != nil && part.Body.Data != "" {
-				data, err := base64.URLEncoding.DecodeString(part.Body.Data)
-				if err != nil {
-					return "", err
-				}
-				content = string(data)
-				break
+	case "text/html":
+		if part.Body != nil && part.Body.Data != "" {
+			data, decErr := base64.URLEncoding.DecodeString(part.Body.Data)
+			if decErr != nil {
+				return "", "", decErr
+			}
+			return "", string(data), nil
+		}
+	default:
+		// For multipart/* and other containers, recurse into sub-parts
+		if part.Body != nil && part.Body.Data != "" {
+			data, decErr := base64.URLEncoding.DecodeString(part.Body.Data)
+			if decErr != nil {
+				return "", "", decErr
+			}
+			return string(data), "", nil
+		}
+
+		for _, sub := range part.Parts {
+			p, h, subErr := extractTextFromPart(sub)
+			if subErr != nil {
+				return "", "", subErr
+			}
+			if p != "" && plain == "" {
+				plain = p
+			}
+			if h != "" && html == "" {
+				html = h
 			}
 		}
 	}
 
-	return content, nil
+	return plain, html, nil
+}
+
+var (
+	htmlTagRe      = regexp.MustCompile(`<[^>]+>`)
+	htmlEntityRe   = regexp.MustCompile(`&[a-zA-Z]+;|&#[0-9]+;`)
+	multiSpaceRe   = regexp.MustCompile(`[ \t]+`)
+	multiNewlineRe = regexp.MustCompile(`\n{3,}`)
+)
+
+// stripHTML removes HTML tags and decodes common entities to produce readable plain text.
+func stripHTML(html string) string {
+	// Replace block-level tags with newlines before stripping
+	for _, tag := range []string{"</p>", "</div>", "</br>", "<br>", "<br/>", "<br />"} {
+		html = strings.ReplaceAll(html, tag, "\n")
+	}
+
+	text := htmlTagRe.ReplaceAllString(html, "")
+	text = htmlEntityRe.ReplaceAllStringFunc(text, decodeHTMLEntity)
+	text = multiSpaceRe.ReplaceAllString(text, " ")
+
+	lines := strings.Split(text, "\n")
+	var cleaned []string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		cleaned = append(cleaned, line)
+	}
+
+	text = strings.Join(cleaned, "\n")
+	text = multiNewlineRe.ReplaceAllString(text, "\n\n")
+
+	return strings.TrimSpace(text)
+}
+
+func decodeHTMLEntity(entity string) string {
+	switch entity {
+	case "&amp;":
+		return "&"
+	case "&lt;":
+		return "<"
+	case "&gt;":
+		return ">"
+	case "&quot;":
+		return "\""
+	case "&apos;", "&#39;":
+		return "'"
+	case "&nbsp;":
+		return " "
+	default:
+		return ""
+	}
 }
 
 func (c *GmailClient) shouldProcessMessage(msg Message) bool {

@@ -39,6 +39,7 @@ func (b *TelegramBot) SendMessage(
 	message += fmt.Sprintf("📅 %s\n", date)
 	message += fmt.Sprintf("📧 From: %s\n\n", from)
 
+	// TODO: remove flags
 	if originalContent != "" {
 		message += fmt.Sprintf("🇷🇺 Translation:\n%s\n\n", content)
 		message += fmt.Sprintf("🇬🇧 Original:\n%s", originalContent)

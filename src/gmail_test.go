@@ -339,6 +339,71 @@ func TestParseMessage(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "html-only message falls back to stripped html",
+			msg: &gmail.Message{
+				Id: "456",
+				Payload: &gmail.MessagePart{
+					Headers: []*gmail.MessagePartHeader{
+						{Name: "Subject", Value: "HTML Subject"},
+						{Name: "From", Value: "school@example.com"},
+						{Name: "Date", Value: "2024-03-28"},
+					},
+					Parts: []*gmail.MessagePart{
+						{
+							MimeType: "text/html",
+							Body: &gmail.MessagePartBody{
+								// "<p>Hello</p><p>World</p>" in URL-safe base64
+								Data: "PHA-SGVsbG88L3A-PHA-V29ybGQ8L3A-",
+							},
+						},
+					},
+				},
+			},
+			expected: Message{
+				ID:      "456",
+				Subject: "HTML Subject",
+				From:    "school@example.com",
+				Date:    "2024-03-28",
+				Content: "Hello\nWorld",
+			},
+			wantErr: false,
+		},
+		{
+			name: "nested multipart message",
+			msg: &gmail.Message{
+				Id: "789",
+				Payload: &gmail.MessagePart{
+					Headers: []*gmail.MessagePartHeader{
+						{Name: "Subject", Value: "Nested Subject"},
+						{Name: "From", Value: "school@example.com"},
+						{Name: "Date", Value: "2024-03-28"},
+					},
+					MimeType: "multipart/mixed",
+					Parts: []*gmail.MessagePart{
+						{
+							MimeType: "multipart/alternative",
+							Parts: []*gmail.MessagePart{
+								{
+									MimeType: "text/plain",
+									Body: &gmail.MessagePartBody{
+										Data: "SGVsbG8gV29ybGQ=", // "Hello World"
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: Message{
+				ID:      "789",
+				Subject: "Nested Subject",
+				From:    "school@example.com",
+				Date:    "2024-03-28",
+				Content: "Hello World",
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

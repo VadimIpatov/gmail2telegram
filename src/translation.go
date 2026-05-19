@@ -11,7 +11,7 @@ import (
 
 const (
 	defaultModelName      = "gemini-2.0-flash"
-	defaultPromptTemplate = "Translate this text to {target_language}. Translate ALL non-{target_language} parts of the text, including English, Latvian, and any other languages. Keep {target_language} text unchanged. Preserve all formatting (bold, italic, etc.) and line breaks. Return ONLY the result, without any additional text, markers, or explanations:\n\n{text}"
+	defaultPromptTemplate = "Clean up and translate the following email to {target_language}.\n\nKeep ALL meaningful content.\nRemove only pure technical noise: email footer links (\"Unsubscribe\", \"Update settings\", \"Read more on ...\"), navigation menus, and system-generated metadata.\nTranslate every non-{target_language} word. Return ONLY the result, without any additional text, markers, or explanations:\n\n{text}"
 )
 
 type TranslationService struct {
@@ -45,6 +45,11 @@ func (s *TranslationService) Translate(ctx context.Context, text string) (string
 	return s.translate(ctx, text)
 }
 
+// TODO:
+// 2025/04/01 06:22:56 Processing message 1/1: Aprīļa rēķins
+// 2025/04/01 06:22:56 Processing message: Aprīļa rēķins
+// 2025/04/01 06:22:56 Processing message content...
+// 2025/04/01 06:22:56 Error processing message: error processing message content: empty text provided for translation
 func (s *TranslationService) defaultTranslate(ctx context.Context, text string) (string, error) {
 	if text == "" {
 		return "", fmt.Errorf("empty text provided for translation")

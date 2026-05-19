@@ -59,8 +59,6 @@ func processMessage(
 	telegramBot *TelegramBot,
 	gmailClient *GmailClient,
 ) error {
-	log.Printf("Processing message: %s", msg.Subject)
-
 	// Process message content
 	log.Printf("Processing message content...")
 
